@@ -1,66 +1,67 @@
 #include <Arduino.h>
 #include "DataLogger.h"
 
-// https://github.com/rlogiacco/CircularBuffer/blob/master/examples/Struct/Struct.ino
-// https://github.com/rlogiacco/CircularBuffer/blob/master/examples/Interrupts/Interrupts.ino
+// Pamti promenu vrednosti na nekom digitalnom pinu. Prikazuje sve promene prilikom sledeceg reseta.
 
-typedef struct
+struct Rec
 {
-  ulong ms;
-  int val;
-} Rec;
-
-DataLogger<Rec, 3> dl("/dl.txt");
-DataLogger<String, 10> dls("/strings.txt");
-
-void recPrintln(void *obj)
-{
-  Rec *r = (Rec *)obj;
-  Serial.print(r->ms);
-  Serial.print('\t');
-  Serial.println(r->val);
-}
+    ulong ms;
+    bool val;
+};
 
 void dumpToFile(void *obj, File &fp)
 {
-  Rec *r = (Rec *)obj;
-  fp.print(r->ms);
-  fp.print('\t');
-  fp.println(r->val);
+    Rec *r = (Rec *)obj;
+    fp.printf("%5ld %8s \n", r->ms % 100000, r->val ? "HIGH" : "LOW");
 }
+
+DataLogger<Rec, 20> vals("/vals.txt", dumpToFile);
+
+void forEach(void *obj)
+{
+    Rec *r = (Rec *)obj;
+    Serial.println(r->val);
+    // fp.print(r->ms);
+    // fp.print('\t');
+    // fp.println(r->val ? "HIGH" : "LOW");
+}
+// vals.forEach(forEach);
+
+const int pinButton = D1;
+bool valButton = 1;
 
 void setup()
 {
-  Serial.begin(115200);
-  Serial.println();
+    pinMode(pinButton, INPUT_PULLUP);
 
-  dl.add(Rec{millis(), 123});
-  dl.add(Rec{2222, -123});
-  dl.add(Rec{millis(), 247});
-  // dl.forEach(recPrintln);
-  dl.dumpToFile(dumpToFile);
-  dl.add(Rec{millis(), 333});
-  dl.dumpToFile(dumpToFile);
-  dl.add(Rec{millis(), 444});
-  dl.dumpToFile(dumpToFile);
-  dl.add(Rec{millis(), 555});
-  dl.dumpToFile(dumpToFile);
+    Serial.begin(115200);
+    Serial.println();
 
-  File fp = LittleFS.open(dl.getFileName(), "r");
-  String s = "";
-  if (fp)
-  {
-    Serial.print("File size: ");
-    Serial.println(fp.size());
-    Serial.print(fp.readString());
-    Serial.println("*** END ***");
-    fp.close();
-  }
-  else
-    Serial.println("Fajl nije otvoren za citanje.");
+    Serial.println("Fajl:");
+    Serial.println(vals.readFromFile());
 }
 
 void loop()
 {
-  delay(100);
+    delay(20);
+
+    bool newValButton = digitalRead(pinButton);
+    if (valButton != newValButton)
+    {
+        Serial.println(newValButton ? "HI" : "LO");
+        ulong ms = millis();
+        valButton = newValButton;
+        // vals.add(Rec{millis(), valButton});
+        // vals.saveToFile(dumpToFile, true);
+
+        // vals.addSave(Rec{millis(), valButton}, dumpToFile);
+
+        // vals.addSave(Rec{millis(), valButton});
+
+        vals.addSaveDelayed(Rec{millis(), valButton});
+
+        Serial.println(millis() - ms);
+    }
+
+    vals.refresh(millis());
 }

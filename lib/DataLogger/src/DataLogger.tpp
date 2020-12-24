@@ -1,11 +1,14 @@
 #include "DataLogger.h"
 
 template <typename T, size_t S>
-DataLogger<T, S>::DataLogger(const char *fileName)
+DataLogger<T, S>::DataLogger(const char *fileName, void (*saveFunc)(void *, File &), bool clearFile)
 {
-    LittleFS.begin();
+    XFS.begin();
     setFileName(fileName);
-    clearFile();
+    if (clearFile)
+        this->clearFile();
+    if (saveFunc != NULL)
+        this->saveFunc = saveFunc;
 }
 
 template <typename T, size_t S>
@@ -13,32 +16,66 @@ void DataLogger<T, S>::forEach(void (*f)(void *))
 {
     for (int i = 0; i < size(); i++)
     {
-        // f(&(buf[i]));
         T obj = buf[i];
         f(&obj);
     }
 }
 
 template <typename T, size_t S>
-void DataLogger<T, S>::dumpToFile(void (*f)(void *, File &), bool clearBufferAfter)
+void DataLogger<T, S>::saveToFile(bool clearBuffer)
 {
-    File fp = LittleFS.open(fileName, "a");
-    dumpLock = true;
+    File fp = XFS.open(fileName, "a");
     for (int i = 0; i < size(); i++)
     {
         T obj = buf[i];
-        f(&obj, fp);
+        saveFunc(&obj, fp);
     }
-    if (clearBufferAfter)
+    if (clearBuffer)
         buf.clear();
-    dumpLock = false;
     fp.close();
+}
+
+template <typename T, size_t S>
+void DataLogger<T, S>::addSave(T el, bool clearBuffer)
+{
+    add(el);
+    saveToFile(saveFunc, clearBuffer);
+}
+
+template <typename T, size_t S>
+void DataLogger<T, S>::addSaveDelayed(T el, int ms)
+{
+    add(el);
+    msSave = millis() + ms;
+}
+
+template <typename T, size_t S>
+void DataLogger<T, S>::refresh(ulong ms)
+{
+    if (ms > msSave)
+    {
+        saveToFile(true);
+        msSave = UINT32_MAX;
+    }
 }
 
 template <typename T, size_t S>
 void DataLogger<T, S>::clearFile()
 {
-    File fp = LittleFS.open(fileName, "w");
+    File fp = XFS.open(fileName, "w");
     if (fp)
         fp.close();
+}
+
+template <typename T, size_t S>
+String DataLogger<T, S>::readFromFile()
+{
+    String s;
+    File f = XFS.open(getFileName(), "r");
+    if (f)
+    {
+        s = f.readString();
+        f.close();
+    }
+    return s;
 }
